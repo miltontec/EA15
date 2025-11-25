@@ -336,6 +336,14 @@ enum ENUM_SCENARIO_STRENGTH {
     STRENGTH_VERY_STRONG    // WR > 75%
 };
 
+// Enum para niveles de privilegio de agentes
+enum ENUM_AGENT_PRIVILEGE {
+    PRIVILEGE_NORMAL = 0,    // Normal (< 60% WR)
+    PRIVILEGE_SENIOR = 1,    // Senior (>= 60% WR)
+    PRIVILEGE_MASTER = 2,    // Master (>= 70% WR)
+    PRIVILEGE_ORACLE = 3     // Oracle (>= 80% WR)
+};
+
 // Performance por escenario con sistema de curación progresiva
 struct ScenarioPerformance {
     int trades;
@@ -6812,15 +6820,13 @@ double GetConsensusSuccessRate()
             int scenarioIdx = snapshot.scenarios[i];
             if(scenarioIdx >= SCENARIO_COUNT) continue;
 
-            ScenarioPerformance &perf = m_scenarioStats[scenarioIdx];
-
             // Requiere mínimo 10 trades para clasificación
-            if(perf.trades < 10) continue;
+            if(m_scenarioStats[scenarioIdx].trades < 10) continue;
 
-            if(perf.strength <= STRENGTH_WEAK) {
+            if(m_scenarioStats[scenarioIdx].strength <= STRENGTH_WEAK) {
                 weakCount++;
             }
-            else if(perf.strength >= STRENGTH_STRONG) {
+            else if(m_scenarioStats[scenarioIdx].strength >= STRENGTH_STRONG) {
                 strongCount++;
             }
         }
@@ -6841,12 +6847,11 @@ double GetConsensusSuccessRate()
             int scenarioIdx = snapshot.scenarios[i];
             if(scenarioIdx >= SCENARIO_COUNT) continue;
 
-            ScenarioPerformance &perf = m_scenarioStats[scenarioIdx];
-            if(perf.trades < 10) continue;
+            if(m_scenarioStats[scenarioIdx].trades < 10) continue;
 
-            if(perf.strength <= STRENGTH_WEAK) {
-                worstWinRate = MathMin(worstWinRate, perf.winRate);
-                worstExpectancy = MathMin(worstExpectancy, perf.expectancy);
+            if(m_scenarioStats[scenarioIdx].strength <= STRENGTH_WEAK) {
+                worstWinRate = MathMin(worstWinRate, m_scenarioStats[scenarioIdx].winRate);
+                worstExpectancy = MathMin(worstExpectancy, m_scenarioStats[scenarioIdx].expectancy);
             }
         }
 
@@ -6880,45 +6885,43 @@ double GetConsensusSuccessRate()
         Print("🔄 RESETEO MENSUAL DE ESCENARIOS DE DEBILIDAD");
 
         for(int i = 0; i < SCENARIO_COUNT; i++) {
-            ScenarioPerformance &perf = m_scenarioStats[i];
-
-            if(perf.trades < 5) continue;  // Ignorar escenarios con poca data
+            if(m_scenarioStats[i].trades < 5) continue;  // Ignorar escenarios con poca data
 
             // Calcular performance del mes que termina
-            double monthWinRate = perf.recentWinRate;
+            double monthWinRate = m_scenarioStats[i].recentWinRate;
 
             // Determinar si fue mes "bueno"
             bool wasGoodMonth = (monthWinRate >= 0.50);  // Normal: >50%
 
             // LÓGICA DE CURACIÓN PROGRESIVA
-            if(perf.strength <= STRENGTH_WEAK) {
+            if(m_scenarioStats[i].strength <= STRENGTH_WEAK) {
                 if(wasGoodMonth) {
-                    perf.consecutiveGoodMonths++;
+                    m_scenarioStats[i].consecutiveGoodMonths++;
                     Print(StringFormat("  ✅ Escenario %d: Mes bueno (%d/3 hacia curación)",
-                        i, perf.consecutiveGoodMonths));
+                        i, m_scenarioStats[i].consecutiveGoodMonths));
 
                     // CURACIÓN PERMANENTE: 3 meses consecutivos buenos
-                    if(perf.consecutiveGoodMonths >= 3) {
-                        perf.isPermanentlyHealed = true;
-                        perf.strength = STRENGTH_NEUTRAL;  // Promover a neutral
+                    if(m_scenarioStats[i].consecutiveGoodMonths >= 3) {
+                        m_scenarioStats[i].isPermanentlyHealed = true;
+                        m_scenarioStats[i].strength = STRENGTH_NEUTRAL;  // Promover a neutral
                         Print(StringFormat("  🎉 Escenario %d CURADO permanentemente (3 meses buenos)", i));
                     }
                 }
                 else {
                     // Reset del contador si vuelve a fallar
-                    if(perf.consecutiveGoodMonths > 0) {
+                    if(m_scenarioStats[i].consecutiveGoodMonths > 0) {
                         Print(StringFormat("  ⚠️ Escenario %d: Recaída - Counter reseteado", i));
                     }
-                    perf.consecutiveGoodMonths = 0;
+                    m_scenarioStats[i].consecutiveGoodMonths = 0;
                 }
             }
 
             // Resetear métricas recientes para nuevo mes
-            perf.recentTrades = 0;
-            perf.recentWins = 0;
-            perf.recentWinRate = 0.0;
-            perf.lastReset = TimeCurrent();
-            perf.monthsSinceLastReset = 0;
+            m_scenarioStats[i].recentTrades = 0;
+            m_scenarioStats[i].recentWins = 0;
+            m_scenarioStats[i].recentWinRate = 0.0;
+            m_scenarioStats[i].lastReset = TimeCurrent();
+            m_scenarioStats[i].monthsSinceLastReset = 0;
 
             // NO resetear métricas históricas totales (trades, wins, totalProfit, etc.)
         }
@@ -6939,10 +6942,9 @@ double GetConsensusSuccessRate()
             return;
         }
 
-        ScenarioPerformance &perf = m_scenarioStats[scenario];
-        winRate = perf.winRate;
-        profitFactor = perf.profitFactor;
-        strength = perf.strength;
+        winRate = m_scenarioStats[scenario].winRate;
+        profitFactor = m_scenarioStats[scenario].profitFactor;
+        strength = m_scenarioStats[scenario].strength;
     }
 
     // Método para actualizar privilegios de agentes automáticamente
@@ -6954,34 +6956,48 @@ double GetConsensusSuccessRate()
 
             // Requiere mínimo trades para privilegios
             if(totalTrades < m_minTrades) {
-                m_agentStats[i].privilege = PRIVILEGE_NORMAL;
+                m_agentStats[i].privilege_level = PRIVILEGE_NORMAL;
                 continue;
             }
 
             // Ajuste automático de privilegios
-            ENUM_AGENT_PRIVILEGE oldPrivilege = m_agentStats[i].privilege;
+            int oldPrivilege = m_agentStats[i].privilege_level;
 
             if(currentWR >= m_minOracle) {
-                m_agentStats[i].privilege = PRIVILEGE_ORACLE;
+                m_agentStats[i].privilege_level = PRIVILEGE_ORACLE;
             }
             else if(currentWR >= m_minMaster) {
-                m_agentStats[i].privilege = PRIVILEGE_MASTER;
+                m_agentStats[i].privilege_level = PRIVILEGE_MASTER;
             }
             else if(currentWR >= m_minSenior) {
-                m_agentStats[i].privilege = PRIVILEGE_SENIOR;
+                m_agentStats[i].privilege_level = PRIVILEGE_SENIOR;
             }
             else {
-                m_agentStats[i].privilege = PRIVILEGE_NORMAL;
+                m_agentStats[i].privilege_level = PRIVILEGE_NORMAL;
             }
 
             // Log si hubo cambio de privilegio
-            if(oldPrivilege != m_agentStats[i].privilege) {
+            if(oldPrivilege != m_agentStats[i].privilege_level) {
+                string oldPrivName = GetPrivilegeName((ENUM_AGENT_PRIVILEGE)oldPrivilege);
+                string newPrivName = GetPrivilegeName((ENUM_AGENT_PRIVILEGE)m_agentStats[i].privilege_level);
                 Print(StringFormat("🎖️ Agent %d (%s): Privilegio cambiado de %s a %s (WR: %.1f%%)",
                     i, m_agentNames[i],
-                    EnumToString(oldPrivilege),
-                    EnumToString(m_agentStats[i].privilege),
+                    oldPrivName,
+                    newPrivName,
                     currentWR * 100));
             }
+        }
+    }
+
+    // Helper para convertir enum a nombre legible
+    string GetPrivilegeName(ENUM_AGENT_PRIVILEGE priv)
+    {
+        switch(priv) {
+            case PRIVILEGE_ORACLE: return "ORACLE";
+            case PRIVILEGE_MASTER: return "MASTER";
+            case PRIVILEGE_SENIOR: return "SENIOR";
+            case PRIVILEGE_NORMAL: return "NORMAL";
+            default: return "UNKNOWN";
         }
     }
 
