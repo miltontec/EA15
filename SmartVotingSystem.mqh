@@ -13,15 +13,15 @@
 //| ENUMERACIONES                                                     |
 //+------------------------------------------------------------------+
 
-// Contextos de mercado
-enum ENUM_MARKET_CONTEXT {
-    CONTEXT_RANGING,           // Mercado lateral (ADX < 20)
-    CONTEXT_TRENDING_UP,       // Tendencia alcista (ADX > 25, slope+)
-    CONTEXT_TRENDING_DOWN,     // Tendencia bajista (ADX > 25, slope-)
-    CONTEXT_VOLATILE,          // Alta volatilidad (ATR > p70)
-    CONTEXT_CHOPPY,            // Mercado errático (ADX 15-25)
-    CONTEXT_ACCUMULATION,      // Fase de acumulación institucional
-    CONTEXT_UNKNOWN            // No clasificable
+// Contextos de mercado (renombrado para evitar conflictos)
+enum ENUM_SMART_CONTEXT {
+    SMART_CONTEXT_RANGING,           // Mercado lateral (ADX < 20)
+    SMART_CONTEXT_TRENDING_UP,       // Tendencia alcista (ADX > 25, slope+)
+    SMART_CONTEXT_TRENDING_DOWN,     // Tendencia bajista (ADX > 25, slope-)
+    SMART_CONTEXT_VOLATILE,          // Alta volatilidad (ATR > p70)
+    SMART_CONTEXT_CHOPPY,            // Mercado errático (ADX 15-25)
+    SMART_CONTEXT_ACCUMULATION,      // Fase de acumulación institucional
+    SMART_CONTEXT_UNKNOWN            // No clasificable
 };
 
 // Calidad de señales
@@ -37,8 +37,8 @@ enum ENUM_SIGNAL_QUALITY {
 //| ESTRUCTURAS                                                       |
 //+------------------------------------------------------------------+
 
-// Señal del indicador
-struct IndicatorSignal {
+// Señal del indicador (renombrado para evitar conflictos)
+struct SmartIndicatorSignal {
     int indicatorID;                    // ID del indicador
     ENUM_VOTE_DIRECTION direction;      // Dirección del voto
     double rawConfidence;               // Confidence original (0-1)
@@ -88,8 +88,8 @@ struct IndicatorSignal {
 };
 
 // Contexto del mercado
-struct MarketContextData {
-    ENUM_MARKET_CONTEXT context;
+struct SmartMarketContextData {
+    ENUM_SMART_CONTEXT context;
     double adx;
     double adxSlope;
     double atr;
@@ -100,7 +100,7 @@ struct MarketContextData {
     datetime lastUpdate;
 
     void Initialize() {
-        context = CONTEXT_UNKNOWN;
+        context = SMART_CONTEXT_UNKNOWN;
         adx = 0.0;
         adxSlope = 0.0;
         atr = 0.0;
@@ -115,7 +115,7 @@ struct MarketContextData {
 // Expertise histórico por contexto
 struct ContextExpertise {
     int indicatorID;
-    ENUM_MARKET_CONTEXT context;
+    ENUM_SMART_CONTEXT context;
     int trades;
     int wins;
     double winRate;
@@ -130,7 +130,7 @@ struct ContextExpertise {
 
     void Initialize() {
         indicatorID = -1;
-        context = CONTEXT_UNKNOWN;
+        context = SMART_CONTEXT_UNKNOWN;
         trades = 0;
         wins = 0;
         winRate = 0.50;
@@ -193,8 +193,8 @@ private:
     int m_atrHandle;
     double m_atrHistory[100];
     int m_historyIndex;
-    MarketContextData m_currentContext;
-    MarketContextData m_previousContext;
+    SmartMarketContextData m_currentContext;
+    SmartMarketContextData m_previousContext;
 
     // INNOVACIÓN: Transition detector
     int m_transitionCount;
@@ -239,7 +239,7 @@ public:
         return true;
     }
 
-    ENUM_MARKET_CONTEXT DetectContext() {
+    ENUM_SMART_CONTEXT DetectContext() {
         // Actualizar datos
         UpdateMarketData();
 
@@ -256,7 +256,7 @@ public:
         return m_currentContext.context;
     }
 
-    MarketContextData GetCurrentContext() {
+    SmartMarketContextData GetCurrentContext() {
         return m_currentContext;
     }
 
@@ -295,43 +295,43 @@ private:
         }
     }
 
-    ENUM_MARKET_CONTEXT ClassifyContext() {
+    ENUM_SMART_CONTEXT ClassifyContext() {
         double adx = m_currentContext.adx;
         double slope = m_currentContext.adxSlope;
         double atrP = m_currentContext.atrPercentile;
 
         // 1. Choppy extremo - NO OPERAR
         if(adx < 15.0) {
-            return CONTEXT_CHOPPY;
+            return SMART_CONTEXT_CHOPPY;
         }
 
         // 2. Trending claro
         if(adx > 25.0) {
             if(slope > 0.5) {
-                return CONTEXT_TRENDING_UP;
+                return SMART_CONTEXT_TRENDING_UP;
             } else if(slope < -0.5) {
-                return CONTEXT_TRENDING_DOWN;
+                return SMART_CONTEXT_TRENDING_DOWN;
             }
             // ADX alto pero sin dirección clara
-            return CONTEXT_VOLATILE;
+            return SMART_CONTEXT_VOLATILE;
         }
 
         // 3. Ranging
         if(adx < 20.0 && atrP < 50.0) {
-            return CONTEXT_RANGING;
+            return SMART_CONTEXT_RANGING;
         }
 
         // 4. Volatile
         if(atrP > 70.0) {
-            return CONTEXT_VOLATILE;
+            return SMART_CONTEXT_VOLATILE;
         }
 
         // 5. Zona intermedia - CHOPPY
         if(adx >= 15.0 && adx <= 25.0) {
-            return CONTEXT_CHOPPY;
+            return SMART_CONTEXT_CHOPPY;
         }
 
-        return CONTEXT_UNKNOWN;
+        return SMART_CONTEXT_UNKNOWN;
     }
 
     double CalculatePercentile(double currentATR) {
@@ -351,7 +351,7 @@ private:
 
         // Si el contexto cambió
         if(m_currentContext.context != m_previousContext.context &&
-           m_previousContext.context != CONTEXT_UNKNOWN) {
+           m_previousContext.context != SMART_CONTEXT_UNKNOWN) {
 
             datetime now = TimeCurrent();
 
@@ -413,26 +413,26 @@ public:
         m_count = 0;
 
         // RANGING - SupportResistance es experto
-        AddExpertise(0, CONTEXT_RANGING, 0.68, true, false);
-        AddExpertise(1, CONTEXT_RANGING, 0.62, false, true);  // Accumulation confirma
+        AddExpertise(0, SMART_CONTEXT_RANGING, 0.68, true, false);
+        AddExpertise(1, SMART_CONTEXT_RANGING, 0.62, false, true);  // Accumulation confirma
 
         // TRENDING UP - Breakout es experto
-        AddExpertise(3, CONTEXT_TRENDING_UP, 0.65, true, false);
-        AddExpertise(4, CONTEXT_TRENDING_UP, 0.58, false, true);  // Institutional confirma
-        AddExpertise(2, CONTEXT_TRENDING_UP, 0.48, false, false); // Pattern complementa
+        AddExpertise(3, SMART_CONTEXT_TRENDING_UP, 0.65, true, false);
+        AddExpertise(4, SMART_CONTEXT_TRENDING_UP, 0.58, false, true);  // Institutional confirma
+        AddExpertise(2, SMART_CONTEXT_TRENDING_UP, 0.48, false, false); // Pattern complementa
 
         // TRENDING DOWN - Breakout es experto
-        AddExpertise(3, CONTEXT_TRENDING_DOWN, 0.65, true, false);
-        AddExpertise(4, CONTEXT_TRENDING_DOWN, 0.58, false, true);
-        AddExpertise(2, CONTEXT_TRENDING_DOWN, 0.48, false, false);
+        AddExpertise(3, SMART_CONTEXT_TRENDING_DOWN, 0.65, true, false);
+        AddExpertise(4, SMART_CONTEXT_TRENDING_DOWN, 0.58, false, true);
+        AddExpertise(2, SMART_CONTEXT_TRENDING_DOWN, 0.48, false, false);
 
         // ACCUMULATION - Institutional es experto
-        AddExpertise(4, CONTEXT_ACCUMULATION, 0.72, true, false);
-        AddExpertise(1, CONTEXT_ACCUMULATION, 0.68, false, true);  // Accumulation confirma
+        AddExpertise(4, SMART_CONTEXT_ACCUMULATION, 0.72, true, false);
+        AddExpertise(1, SMART_CONTEXT_ACCUMULATION, 0.68, false, true);  // Accumulation confirma
 
         // VOLATILE - Institutional es el mejor
-        AddExpertise(4, CONTEXT_VOLATILE, 0.55, true, false);
-        AddExpertise(0, CONTEXT_VOLATILE, 0.45, false, true);  // S/R como confirmación
+        AddExpertise(4, SMART_CONTEXT_VOLATILE, 0.55, true, false);
+        AddExpertise(0, SMART_CONTEXT_VOLATILE, 0.45, false, true);  // S/R como confirmación
 
         // CHOPPY - nadie es experto (no agregamos nada)
 
@@ -440,7 +440,7 @@ public:
         return true;
     }
 
-    void AddExpertise(int indicatorID, ENUM_MARKET_CONTEXT ctx, double expectedWR,
+    void AddExpertise(int indicatorID, ENUM_SMART_CONTEXT ctx, double expectedWR,
                      bool isPrimary, bool isSecondary) {
         if(m_count >= 30) return;
 
@@ -457,7 +457,7 @@ public:
         m_count++;
     }
 
-    int GetPrimaryExpert(ENUM_MARKET_CONTEXT ctx) {
+    int GetPrimaryExpert(ENUM_SMART_CONTEXT ctx) {
         for(int i = 0; i < m_count; i++) {
             if(m_matrix[i].context == ctx && m_matrix[i].isPrimary) {
                 return m_matrix[i].indicatorID;
@@ -466,7 +466,7 @@ public:
         return -1;
     }
 
-    int GetSecondaryExpert(ENUM_MARKET_CONTEXT ctx) {
+    int GetSecondaryExpert(ENUM_SMART_CONTEXT ctx) {
         for(int i = 0; i < m_count; i++) {
             if(m_matrix[i].context == ctx && m_matrix[i].isSecondary) {
                 return m_matrix[i].indicatorID;
@@ -475,7 +475,7 @@ public:
         return -1;
     }
 
-    double GetExpectedWR(int indicatorID, ENUM_MARKET_CONTEXT ctx) {
+    double GetExpectedWR(int indicatorID, ENUM_SMART_CONTEXT ctx) {
         for(int i = 0; i < m_count; i++) {
             if(m_matrix[i].indicatorID == indicatorID &&
                m_matrix[i].context == ctx) {
@@ -485,7 +485,7 @@ public:
         return 0.35;  // WR bajo por defecto
     }
 
-    void UpdateResult(int indicatorID, ENUM_MARKET_CONTEXT ctx, bool won) {
+    void UpdateResult(int indicatorID, ENUM_SMART_CONTEXT ctx, bool won) {
         for(int i = 0; i < m_count; i++) {
             if(m_matrix[i].indicatorID == indicatorID &&
                m_matrix[i].context == ctx) {
@@ -501,7 +501,7 @@ public:
         }
     }
 
-    bool IsExpert(int indicatorID, ENUM_MARKET_CONTEXT ctx) {
+    bool IsExpert(int indicatorID, ENUM_SMART_CONTEXT ctx) {
         for(int i = 0; i < m_count; i++) {
             if(m_matrix[i].indicatorID == indicatorID &&
                m_matrix[i].context == ctx) {
@@ -511,7 +511,7 @@ public:
         return false;
     }
 
-    string GetExpertiseReport(ENUM_MARKET_CONTEXT ctx) {
+    string GetExpertiseReport(ENUM_SMART_CONTEXT ctx) {
         string report = "📊 EXPERTISE REPORT para " + EnumToString(ctx) + ":\n";
 
         for(int i = 0; i < m_count; i++) {
@@ -550,7 +550,7 @@ public:
     }
 
     // Validar señal de Support/Resistance
-    bool ValidateSupportResistance(IndicatorSignal &signal) {
+    bool ValidateSupportResistance(SmartIndicatorSignal &signal) {
         // Datos específicos S/R
         int quality = signal.data.sr.quality;
         int touches = signal.data.sr.touches;
@@ -586,7 +586,7 @@ public:
     }
 
     // Validar señal de Breakout
-    bool ValidateBreakout(IndicatorSignal &signal) {
+    bool ValidateBreakout(SmartIndicatorSignal &signal) {
         int strength = signal.data.breakout.strength;
         bool hasRetest = signal.data.breakout.hasRetest;
         double volumeRatio = signal.data.breakout.volumeRatio;
@@ -621,7 +621,7 @@ public:
     }
 
     // Validar señal de Institutional
-    bool ValidateInstitutional(IndicatorSignal &signal) {
+    bool ValidateInstitutional(SmartIndicatorSignal &signal) {
         int phase = signal.data.institutional.phase;
         bool springDetected = signal.data.institutional.springDetected;
         double buyPressure = signal.data.institutional.buyPressure;
@@ -660,7 +660,7 @@ public:
     }
 
     // Validar señal de Accumulation Zones
-    bool ValidateAccumulation(IndicatorSignal &signal) {
+    bool ValidateAccumulation(SmartIndicatorSignal &signal) {
         int strength = signal.data.accumulation.strength;
         int barCount = signal.data.accumulation.barCount;
         double volatilityRatio = signal.data.accumulation.volatilityRatio;
@@ -695,7 +695,7 @@ public:
     }
 
     // Validar señal de Pattern Memory
-    bool ValidatePatternMemory(IndicatorSignal &signal) {
+    bool ValidatePatternMemory(SmartIndicatorSignal &signal) {
         // PatternMemory es más flexible, solo verificar confidence
         if(signal.rawConfidence < 0.50) {
             Print("   ❌ PatternMemory Quality Filter: Confidence baja (", signal.rawConfidence * 100, "%)");
@@ -707,7 +707,7 @@ public:
     }
 
     // Método principal de validación
-    bool Validate(IndicatorSignal &signal) {
+    bool Validate(SmartIndicatorSignal &signal) {
         switch(signal.indicatorID) {
             case 0:  return ValidateSupportResistance(signal);
             case 1:  return ValidateAccumulation(signal);
@@ -738,8 +738,8 @@ public:
         m_currentATR = atr;
     }
 
-    bool RequireConfirmation(IndicatorSignal &primary, IndicatorSignal &secondary,
-                            ENUM_MARKET_CONTEXT ctx) {
+    bool RequireConfirmation(SmartIndicatorSignal &primary, SmartIndicatorSignal &secondary,
+                            ENUM_SMART_CONTEXT ctx) {
         // VALIDACIÓN BÁSICA: Direcciones deben coincidir
         if(primary.direction != secondary.direction) {
             Print("   ❌ Confirmation: Direcciones no coinciden");
@@ -747,13 +747,13 @@ public:
         }
 
         // Validación específica por contexto
-        if(ctx == CONTEXT_RANGING) {
+        if(ctx == SMART_CONTEXT_RANGING) {
             return ValidateRangingConfirmation(primary, secondary);
         }
-        else if(ctx == CONTEXT_TRENDING_UP || ctx == CONTEXT_TRENDING_DOWN) {
+        else if(ctx == SMART_CONTEXT_TRENDING_UP || ctx == SMART_CONTEXT_TRENDING_DOWN) {
             return ValidateTrendingConfirmation(primary, secondary);
         }
-        else if(ctx == CONTEXT_ACCUMULATION) {
+        else if(ctx == SMART_CONTEXT_ACCUMULATION) {
             return ValidateAccumulationConfirmation(primary, secondary);
         }
 
@@ -763,7 +763,7 @@ public:
     }
 
 private:
-    bool ValidateRangingConfirmation(IndicatorSignal &sr, IndicatorSignal &acc) {
+    bool ValidateRangingConfirmation(SmartIndicatorSignal &sr, SmartIndicatorSignal &acc) {
         // S/R y Accumulation deben estar cerca
         double srLevel = sr.data.sr.level;
         double accCenter = acc.data.accumulation.zoneCenter;
@@ -784,7 +784,7 @@ private:
         return true;
     }
 
-    bool ValidateTrendingConfirmation(IndicatorSignal &brk, IndicatorSignal &inst) {
+    bool ValidateTrendingConfirmation(SmartIndicatorSignal &brk, SmartIndicatorSignal &inst) {
         // Fase institucional debe alinearse con dirección
         int phase = inst.data.institutional.phase;
 
@@ -815,7 +815,7 @@ private:
         return true;
     }
 
-    bool ValidateAccumulationConfirmation(IndicatorSignal &inst, IndicatorSignal &acc) {
+    bool ValidateAccumulationConfirmation(SmartIndicatorSignal &inst, SmartIndicatorSignal &acc) {
         // Ambos deben detectar acumulación
         if(inst.data.institutional.phase != 1) {  // PHASE_ACCUMULATION
             Print("   ❌ Accumulation Confirmation: Institutional no ve ACCUMULATION");
@@ -956,7 +956,7 @@ private:
 //+------------------------------------------------------------------+
 class SignalQualityScorer {
 public:
-    int CalculateQualityScore(IndicatorSignal &signal, ENUM_MARKET_CONTEXT ctx,
+    int CalculateQualityScore(SmartIndicatorSignal &signal, ENUM_SMART_CONTEXT ctx,
                              double expectedWR) {
         int score = 0;
 
@@ -985,7 +985,7 @@ public:
     }
 
 private:
-    int CalculateIndicatorSpecificScore(IndicatorSignal &signal) {
+    int CalculateIndicatorSpecificScore(SmartIndicatorSignal &signal) {
         switch(signal.indicatorID) {
             case 0:  return ScoreSupportResistance(signal);
             case 1:  return ScoreAccumulation(signal);
@@ -996,7 +996,7 @@ private:
         }
     }
 
-    int ScoreSupportResistance(IndicatorSignal &signal) {
+    int ScoreSupportResistance(SmartIndicatorSignal &signal) {
         int score = 0;
 
         // Calidad del nivel
@@ -1015,7 +1015,7 @@ private:
         return score;
     }
 
-    int ScoreAccumulation(IndicatorSignal &signal) {
+    int ScoreAccumulation(SmartIndicatorSignal &signal) {
         int score = 0;
 
         // Strength
@@ -1033,12 +1033,12 @@ private:
         return score;
     }
 
-    int ScorePatternMemory(IndicatorSignal &signal) {
+    int ScorePatternMemory(SmartIndicatorSignal &signal) {
         // PatternMemory score basado solo en confidence
         return (int)(signal.rawConfidence * 30.0);
     }
 
-    int ScoreBreakout(IndicatorSignal &signal) {
+    int ScoreBreakout(SmartIndicatorSignal &signal) {
         int score = 0;
 
         // Strength
@@ -1055,7 +1055,7 @@ private:
         return score;
     }
 
-    int ScoreInstitutional(IndicatorSignal &signal) {
+    int ScoreInstitutional(SmartIndicatorSignal &signal) {
         int score = 0;
 
         // Fase
@@ -1138,7 +1138,7 @@ public:
         return true;
     }
 
-    bool ShouldTakeTrade(IndicatorSignal &signals[], int count, string &rejectReason) {
+    bool ShouldTakeTrade(SmartIndicatorSignal &signals[], int count, string &rejectReason) {
         m_signalsGenerated++;
 
         Print("\n╔════════════════════════════════════════════╗");
@@ -1147,14 +1147,14 @@ public:
 
         // NIVEL 1: Context Filter
         Print("\n[NIVEL 1] Context Filter:");
-        ENUM_MARKET_CONTEXT ctx = m_contextDetector.DetectContext();
-        MarketContextData contextData = m_contextDetector.GetCurrentContext();
+        ENUM_SMART_CONTEXT ctx = m_contextDetector.DetectContext();
+        SmartMarketContextData contextData = m_contextDetector.GetCurrentContext();
 
         Print("   Contexto detectado: ", EnumToString(ctx));
         Print("   ADX: ", contextData.adx, " | Slope: ", contextData.adxSlope);
         Print("   ATR Percentile: ", contextData.atrPercentile, "%");
 
-        if(ctx == CONTEXT_CHOPPY || ctx == CONTEXT_UNKNOWN) {
+        if(ctx == CONTEXT_CHOPPY || ctx == SMART_CONTEXT_UNKNOWN) {
             rejectReason = "Contexto CHOPPY/UNKNOWN - no operable";
             m_signalsRejectedContext++;
             Print("   ❌ RECHAZADO: ", rejectReason);
@@ -1194,7 +1194,7 @@ public:
         }
 
         // Buscar señal del experto primario
-        IndicatorSignal primarySignal, secondarySignal;
+        SmartIndicatorSignal primarySignal, secondarySignal;
         bool hasPrimary = false, hasSecondary = false;
 
         for(int i = 0; i < count; i++) {
@@ -1289,15 +1289,15 @@ public:
         return true;
     }
 
-    void UpdateResult(int indicatorID, ENUM_MARKET_CONTEXT ctx, bool won) {
+    void UpdateResult(int indicatorID, ENUM_SMART_CONTEXT ctx, bool won) {
         m_expertiseMatrix.UpdateResult(indicatorID, ctx, won);
     }
 
-    string GetExpertiseReport(ENUM_MARKET_CONTEXT ctx) {
+    string GetExpertiseReport(ENUM_SMART_CONTEXT ctx) {
         return m_expertiseMatrix.GetExpertiseReport(ctx);
     }
 
-    MarketContextData GetCurrentContext() {
+    SmartMarketContextData GetCurrentContext() {
         return m_contextDetector.GetCurrentContext();
     }
 
