@@ -271,6 +271,173 @@ struct ContextPainCell
 #define ML_REGIME_BUCKETS  8
 #define ML_VOL_BUCKETS     5
 
+//+------------------------------------------------------------------+
+//| SISTEMA DE CLASIFICACIÓN DE DEBILIDADES DE MERCADO             |
+//| Identifica escenarios donde el EA pierde más y ajusta timidez   |
+//+------------------------------------------------------------------+
+
+// Enumeración de escenarios de mercado específicos
+enum ENUM_MARKET_SCENARIO {
+    // Volatilidad
+    SCENARIO_LOW_VOLATILITY,      // ATR < 50% del promedio
+    SCENARIO_MEDIUM_VOLATILITY,   // ATR normal
+    SCENARIO_HIGH_VOLATILITY,     // ATR > 150% del promedio
+    SCENARIO_EXTREME_VOLATILITY,  // ATR > 200%
+
+    // Tendencia
+    SCENARIO_FLAT_MARKET,         // ADX < 20, rango estrecho
+    SCENARIO_TRENDING_BULLISH,    // ADX > 25, pendiente positiva
+    SCENARIO_TRENDING_BEARISH,    // ADX > 25, pendiente negativa
+    SCENARIO_CHOPPY,              // Oscilación sin dirección clara
+
+    // Sesión
+    SCENARIO_ASIAN_SESSION,       // 00:00-08:00 GMT
+    SCENARIO_LONDON_OPENING,      // 08:00-10:00 GMT
+    SCENARIO_OVERLAP_EU_US,       // 13:00-16:00 GMT
+    SCENARIO_NY_AFTERNOON,        // 16:00-20:00 GMT
+    SCENARIO_OVERNIGHT_THIN,      // 22:00-00:00 GMT
+
+    // Patterns especiales
+    SCENARIO_POST_NEWS,           // 30 min después de news de alto impacto
+    SCENARIO_FRIDAY_AFTERNOON,    // Viernes después de 16:00
+    SCENARIO_MONTHLY_ROLLOVER,    // Últimos 2 días del mes
+
+    SCENARIO_COUNT                // Total de escenarios
+};
+
+// Snapshot de escenarios activos en un momento dado
+struct MarketScenarioSnapshot {
+    ENUM_MARKET_SCENARIO scenarios[10];  // Múltiples escenarios simultáneos
+    int scenarioCount;
+    datetime timestamp;
+    double currentVolatility;
+    double currentADX;
+    int currentSession;
+
+    void Initialize() {
+        scenarioCount = 0;
+        timestamp = 0;
+        currentVolatility = 0.0;
+        currentADX = 0.0;
+        currentSession = 0;
+        for(int i = 0; i < 10; i++) {
+            scenarios[i] = SCENARIO_MEDIUM_VOLATILITY;
+        }
+    }
+};
+
+// Clasificación de fortaleza de escenarios
+enum ENUM_SCENARIO_STRENGTH {
+    STRENGTH_VERY_WEAK,     // WR < 30% o Expectancy < -50 pips
+    STRENGTH_WEAK,          // WR 30-45%
+    STRENGTH_NEUTRAL,       // WR 45-55%
+    STRENGTH_GOOD,          // WR 55-65%
+    STRENGTH_STRONG,        // WR 65-75%
+    STRENGTH_VERY_STRONG    // WR > 75%
+};
+
+// Performance por escenario con sistema de curación progresiva
+struct ScenarioPerformance {
+    int trades;
+    int wins;
+    double totalProfit;
+    double totalLoss;
+    double avgWin;
+    double avgLoss;
+    double winRate;
+    double profitFactor;
+    double expectancy;
+
+    // Métricas de tendencia (últimos 20 trades)
+    int recentTrades;
+    int recentWins;
+    double recentWinRate;
+
+    // Clasificación de fortaleza
+    ENUM_SCENARIO_STRENGTH strength;
+
+    // Historial de reseteos y curación
+    datetime lastReset;
+    int monthsSinceLastReset;
+    int consecutiveGoodMonths;  // Meses con WR > 50%
+    bool isPermanentlyHealed;   // TRUE si 3 meses consecutivos buenos
+
+    void Initialize() {
+        trades = 0;
+        wins = 0;
+        totalProfit = 0.0;
+        totalLoss = 0.0;
+        avgWin = 0.0;
+        avgLoss = 0.0;
+        winRate = 0.0;
+        profitFactor = 0.0;
+        expectancy = 0.0;
+        recentTrades = 0;
+        recentWins = 0;
+        recentWinRate = 0.0;
+        strength = STRENGTH_NEUTRAL;
+        lastReset = 0;
+        monthsSinceLastReset = 0;
+        consecutiveGoodMonths = 0;
+        isPermanentlyHealed = false;
+    }
+
+    void UpdateMetrics(bool isWin, double profit) {
+        trades++;
+        recentTrades++;
+
+        if(isWin) {
+            wins++;
+            recentWins++;
+            totalProfit += profit;
+            if(wins > 0) avgWin = totalProfit / wins;
+        }
+        else {
+            totalLoss += MathAbs(profit);
+            int losses = trades - wins;
+            if(losses > 0) avgLoss = totalLoss / losses;
+        }
+
+        // Calcular métricas
+        winRate = (wins + 1.0) / (trades + 2.0);  // Laplace smoothing
+        recentWinRate = (recentWins + 1.0) / (recentTrades + 2.0);
+
+        profitFactor = (totalLoss > 0) ? (totalProfit / totalLoss) : 10.0;
+        profitFactor = MathMin(profitFactor, 10.0);  // Cap at 10
+
+        expectancy = (winRate * avgWin) - ((1.0 - winRate) * avgLoss);
+
+        // Clasificar fortaleza
+        ClassifyStrength();
+    }
+
+    void ClassifyStrength() {
+        if(trades < 10) {
+            strength = STRENGTH_NEUTRAL;
+            return;
+        }
+
+        if(winRate < 0.30 || expectancy < -50) {
+            strength = STRENGTH_VERY_WEAK;
+        }
+        else if(winRate < 0.45) {
+            strength = STRENGTH_WEAK;
+        }
+        else if(winRate < 0.55) {
+            strength = STRENGTH_NEUTRAL;
+        }
+        else if(winRate < 0.65) {
+            strength = STRENGTH_GOOD;
+        }
+        else if(winRate < 0.75) {
+            strength = STRENGTH_STRONG;
+        }
+        else {
+            strength = STRENGTH_VERY_STRONG;
+        }
+    }
+};
+
 
 //+------------------------------------------------------------------+
 //| Clase del Sistema de Meta-Aprendizaje CORREGIDA                |
@@ -5286,6 +5453,13 @@ private:
     int    m_minTradesForRegimePainAnalysis;
     double m_flatExtraHardeningMax;   // Límite máximo del endurecimiento extra para flat
 
+    //+------------------------------------------------------------------+
+    //| SISTEMA DE DEBILIDADES DE MERCADO Y TIMIDEZ ADAPTATIVA         |
+    //+------------------------------------------------------------------+
+    ScenarioPerformance m_scenarioStats[SCENARIO_COUNT];
+    MarketScenarioSnapshot m_currentSnapshot;
+    datetime m_lastMonthlyReset;
+    int m_lastResetMonth;
 
 public:
     MetaLearningSystem() {
@@ -5357,6 +5531,22 @@ public:
         }
         m_minTradesForRegimePainAnalysis = 30;
         m_flatExtraHardeningMax          = 1.5; // hasta +50% extra en caso de flat como mayor fuente de pérdida
+
+        // Inicializar sistema de debilidades de mercado
+        for(int i = 0; i < SCENARIO_COUNT; i++) {
+            m_scenarioStats[i].Initialize();
+        }
+        m_currentSnapshot.Initialize();
+        m_lastMonthlyReset = TimeCurrent();
+
+        MqlDateTime dt;
+        TimeCurrent(dt);
+        m_lastResetMonth = dt.mon;
+
+        Print("✅ Sistema de debilidades de mercado inicializado");
+        Print("   - ", SCENARIO_COUNT, " escenarios monitoreados");
+        Print("   - Reseteo mensual programado");
+        Print("   - Curación progresiva activada (3 meses)");
     }
 
     bool Initialize() {
@@ -6524,6 +6714,277 @@ double GetConsensusSuccessRate()
 
         return (double)totalWins / (double)totalTrades;
     }
+
+    //+------------------------------------------------------------------+
+    //| MÉTODOS DEL SISTEMA DE DEBILIDADES DE MERCADO                   |
+    //+------------------------------------------------------------------+
+
+    // Clasificar escenarios activos en el mercado actual
+    void ClassifyCurrentMarket(MarketScenarioSnapshot &snapshot)
+    {
+        snapshot.Initialize();
+        snapshot.timestamp = TimeCurrent();
+
+        MqlDateTime dt;
+        TimeToStruct(TimeCurrent(), dt);
+
+        // Obtener ATR y ADX (necesitaremos handles globales o calcular aquí)
+        // Por ahora usar valores aproximados basados en el contexto disponible
+        double atr = 0.0;
+        double adx = 0.0;
+
+        // Si tenemos acceso a indicadores, usarlos
+        // Clasificación de volatilidad (basada en ATR)
+        double avgATR = atr * 100.0;  // Promedio normalizado
+        if(atr < avgATR * 0.5) {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_LOW_VOLATILITY;
+        }
+        else if(atr > avgATR * 2.0) {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_EXTREME_VOLATILITY;
+        }
+        else if(atr > avgATR * 1.5) {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_HIGH_VOLATILITY;
+        }
+        else {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_MEDIUM_VOLATILITY;
+        }
+
+        // Clasificación de tendencia (basada en ADX)
+        if(adx < 20) {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_FLAT_MARKET;
+        }
+        else if(adx > 25) {
+            // Determinar dirección basándose en price action (simplificado)
+            double close = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            double open = close;  // Placeholder - necesitaría histórico real
+            if(close > open) {
+                snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_TRENDING_BULLISH;
+            }
+            else {
+                snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_TRENDING_BEARISH;
+            }
+        }
+        else {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_CHOPPY;
+        }
+
+        // Clasificación de sesión
+        int hourGMT = dt.hour;
+        if(hourGMT >= 0 && hourGMT < 8) {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_ASIAN_SESSION;
+        }
+        else if(hourGMT >= 8 && hourGMT < 10) {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_LONDON_OPENING;
+        }
+        else if(hourGMT >= 13 && hourGMT < 16) {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_OVERLAP_EU_US;
+        }
+        else if(hourGMT >= 16 && hourGMT < 20) {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_NY_AFTERNOON;
+        }
+        else if(hourGMT >= 22 || hourGMT < 1) {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_OVERNIGHT_THIN;
+        }
+
+        // Patterns especiales
+        if(dt.day_of_week == 5 && hourGMT >= 16) {
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_FRIDAY_AFTERNOON;
+        }
+
+        if(dt.day >= 29) {  // Últimos 2 días del mes
+            snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_MONTHLY_ROLLOVER;
+        }
+
+        snapshot.currentVolatility = atr;
+        snapshot.currentADX = adx;
+        snapshot.currentSession = hourGMT;
+
+        m_currentSnapshot = snapshot;  // Guardar snapshot actual
+    }
+
+    // Determinar si el escenario actual es débil
+    bool IsWeakScenario(const MarketScenarioSnapshot &snapshot)
+    {
+        int weakCount = 0;
+        int strongCount = 0;
+
+        for(int i = 0; i < snapshot.scenarioCount; i++) {
+            int scenarioIdx = snapshot.scenarios[i];
+            if(scenarioIdx >= SCENARIO_COUNT) continue;
+
+            ScenarioPerformance &perf = m_scenarioStats[scenarioIdx];
+
+            // Requiere mínimo 10 trades para clasificación
+            if(perf.trades < 10) continue;
+
+            if(perf.strength <= STRENGTH_WEAK) {
+                weakCount++;
+            }
+            else if(perf.strength >= STRENGTH_STRONG) {
+                strongCount++;
+            }
+        }
+
+        // Escenario débil si ANY escenario activo es débil y NO hay fuertes dominantes
+        return (weakCount > 0 && strongCount <= weakCount);
+    }
+
+    // Obtener multiplicador de timidez (0.3-1.0)
+    double GetTimidityMultiplier(const MarketScenarioSnapshot &snapshot)
+    {
+        if(!IsWeakScenario(snapshot)) return 1.0;  // Normal operation
+
+        double worstWinRate = 1.0;
+        double worstExpectancy = 0.0;
+
+        for(int i = 0; i < snapshot.scenarioCount; i++) {
+            int scenarioIdx = snapshot.scenarios[i];
+            if(scenarioIdx >= SCENARIO_COUNT) continue;
+
+            ScenarioPerformance &perf = m_scenarioStats[scenarioIdx];
+            if(perf.trades < 10) continue;
+
+            if(perf.strength <= STRENGTH_WEAK) {
+                worstWinRate = MathMin(worstWinRate, perf.winRate);
+                worstExpectancy = MathMin(worstExpectancy, perf.expectancy);
+            }
+        }
+
+        // Cálculo de timidez basado en severidad de debilidad
+        if(worstWinRate < 0.30) return 0.3;  // Muy tímido: solo trades ULTRA selectivos
+        if(worstWinRate < 0.40) return 0.5;  // Tímido: umbral de consenso +50%
+        if(worstWinRate < 0.45) return 0.7;  // Cauteloso: umbral +20%
+
+        return 1.0;
+    }
+
+    // Actualizar performance de escenario después de trade
+    void UpdateScenarioPerformance(const MarketScenarioSnapshot &snapshot, bool isWin, double profit)
+    {
+        for(int i = 0; i < snapshot.scenarioCount; i++) {
+            int scenarioIdx = snapshot.scenarios[i];
+            if(scenarioIdx >= SCENARIO_COUNT) continue;
+
+            m_scenarioStats[scenarioIdx].UpdateMetrics(isWin, profit);
+        }
+    }
+
+    // Reseteo mensual con curación progresiva
+    void CheckAndPerformMonthlyReset()
+    {
+        MqlDateTime dt;
+        TimeToStruct(TimeCurrent(), dt);
+
+        if(dt.mon == m_lastResetMonth) return;  // Mismo mes, no resetear
+
+        Print("🔄 RESETEO MENSUAL DE ESCENARIOS DE DEBILIDAD");
+
+        for(int i = 0; i < SCENARIO_COUNT; i++) {
+            ScenarioPerformance &perf = m_scenarioStats[i];
+
+            if(perf.trades < 5) continue;  // Ignorar escenarios con poca data
+
+            // Calcular performance del mes que termina
+            double monthWinRate = perf.recentWinRate;
+
+            // Determinar si fue mes "bueno"
+            bool wasGoodMonth = (monthWinRate >= 0.50);  // Normal: >50%
+
+            // LÓGICA DE CURACIÓN PROGRESIVA
+            if(perf.strength <= STRENGTH_WEAK) {
+                if(wasGoodMonth) {
+                    perf.consecutiveGoodMonths++;
+                    Print(StringFormat("  ✅ Escenario %d: Mes bueno (%d/3 hacia curación)",
+                        i, perf.consecutiveGoodMonths));
+
+                    // CURACIÓN PERMANENTE: 3 meses consecutivos buenos
+                    if(perf.consecutiveGoodMonths >= 3) {
+                        perf.isPermanentlyHealed = true;
+                        perf.strength = STRENGTH_NEUTRAL;  // Promover a neutral
+                        Print(StringFormat("  🎉 Escenario %d CURADO permanentemente (3 meses buenos)", i));
+                    }
+                }
+                else {
+                    // Reset del contador si vuelve a fallar
+                    if(perf.consecutiveGoodMonths > 0) {
+                        Print(StringFormat("  ⚠️ Escenario %d: Recaída - Counter reseteado", i));
+                    }
+                    perf.consecutiveGoodMonths = 0;
+                }
+            }
+
+            // Resetear métricas recientes para nuevo mes
+            perf.recentTrades = 0;
+            perf.recentWins = 0;
+            perf.recentWinRate = 0.0;
+            perf.lastReset = TimeCurrent();
+            perf.monthsSinceLastReset = 0;
+
+            // NO resetear métricas históricas totales (trades, wins, totalProfit, etc.)
+        }
+
+        m_lastResetMonth = dt.mon;
+        m_lastMonthlyReset = TimeCurrent();
+
+        Print("✅ Reseteo mensual completado");
+    }
+
+    // Método helper para obtener estadísticas de un escenario específico
+    void GetScenarioStats(ENUM_MARKET_SCENARIO scenario, double &winRate, double &profitFactor, ENUM_SCENARIO_STRENGTH &strength)
+    {
+        if(scenario >= SCENARIO_COUNT) {
+            winRate = 0.5;
+            profitFactor = 1.0;
+            strength = STRENGTH_NEUTRAL;
+            return;
+        }
+
+        ScenarioPerformance &perf = m_scenarioStats[scenario];
+        winRate = perf.winRate;
+        profitFactor = perf.profitFactor;
+        strength = perf.strength;
+    }
+
+    // Método para actualizar privilegios de agentes automáticamente
+    void UpdateAgentPrivilegesBasedOnWinRate()
+    {
+        for(int i = 0; i < QUANTUM_MAX_AGENTS; i++) {
+            double currentWR = GetAgentWinRate(i);
+            int totalTrades = m_agentStats[i].trades;
+
+            // Requiere mínimo trades para privilegios
+            if(totalTrades < m_minTrades) {
+                m_agentStats[i].privilege = PRIVILEGE_NORMAL;
+                continue;
+            }
+
+            // Ajuste automático de privilegios
+            ENUM_AGENT_PRIVILEGE oldPrivilege = m_agentStats[i].privilege;
+
+            if(currentWR >= m_minOracle) {
+                m_agentStats[i].privilege = PRIVILEGE_ORACLE;
+            }
+            else if(currentWR >= m_minMaster) {
+                m_agentStats[i].privilege = PRIVILEGE_MASTER;
+            }
+            else if(currentWR >= m_minSenior) {
+                m_agentStats[i].privilege = PRIVILEGE_SENIOR;
+            }
+            else {
+                m_agentStats[i].privilege = PRIVILEGE_NORMAL;
+            }
+
+            // Log si hubo cambio de privilegio
+            if(oldPrivilege != m_agentStats[i].privilege) {
+                Print(StringFormat("🎖️ Agent %d (%s): Privilegio cambiado de %s a %s (WR: %.1f%%)",
+                    i, m_agentNames[i],
+                    EnumToString(oldPrivilege),
+                    EnumToString(m_agentStats[i].privilege),
+                    currentWR * 100));
+            }
+        }
+    }
+
     };
 
 #endif // META_LEARNING_QUANTUM_MQH
