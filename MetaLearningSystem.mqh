@@ -6728,7 +6728,7 @@ double GetConsensusSuccessRate()
     //+------------------------------------------------------------------+
 
     // Clasificar escenarios activos en el mercado actual
-    void ClassifyCurrentMarket(MarketScenarioSnapshot &snapshot)
+    void ClassifyCurrentMarket(MarketScenarioSnapshot &snapshot, double atr = 0.0, double adx = 0.0)
     {
         snapshot.Initialize();
         snapshot.timestamp = TimeCurrent();
@@ -6736,14 +6736,11 @@ double GetConsensusSuccessRate()
         MqlDateTime dt;
         TimeToStruct(TimeCurrent(), dt);
 
-        // Obtener ATR y ADX (necesitaremos handles globales o calcular aquí)
-        // Por ahora usar valores aproximados basados en el contexto disponible
-        double atr = 0.0;
-        double adx = 0.0;
+        // Log de valores recibidos para debugging
+        Print(StringFormat("🔍 ClassifyCurrentMarket: ATR=%.2f ADX=%.2f", atr, adx));
 
-        // Si tenemos acceso a indicadores, usarlos
-        // Clasificación de volatilidad (basada en ATR)
-        double avgATR = atr * 100.0;  // Promedio normalizado
+        // Calcular promedio de ATR para comparación (usando valor actual * 1.5 como referencia)
+        double avgATR = atr * 1.5;  // Normalizado
         if(atr < avgATR * 0.5) {
             snapshot.scenarios[snapshot.scenarioCount++] = SCENARIO_LOW_VOLATILITY;
         }
@@ -6808,6 +6805,43 @@ double GetConsensusSuccessRate()
         snapshot.currentSession = hourGMT;
 
         m_currentSnapshot = snapshot;  // Guardar snapshot actual
+
+        // Log de escenarios detectados
+        if(snapshot.scenarioCount > 0)
+        {
+            string scenarioNames = "";
+            for(int i = 0; i < snapshot.scenarioCount; i++)
+            {
+                scenarioNames += GetScenarioName(snapshot.scenarios[i]);
+                if(i < snapshot.scenarioCount - 1) scenarioNames += ", ";
+            }
+            Print(StringFormat("📍 Escenarios activos (%d): %s", snapshot.scenarioCount, scenarioNames));
+        }
+    }
+
+    // Helper: Obtener nombre legible de escenario
+    string GetScenarioName(ENUM_MARKET_SCENARIO scenario)
+    {
+        switch(scenario)
+        {
+            case SCENARIO_LOW_VOLATILITY: return "Low_Vol";
+            case SCENARIO_MEDIUM_VOLATILITY: return "Med_Vol";
+            case SCENARIO_HIGH_VOLATILITY: return "High_Vol";
+            case SCENARIO_EXTREME_VOLATILITY: return "Extreme_Vol";
+            case SCENARIO_FLAT_MARKET: return "Flat";
+            case SCENARIO_TRENDING_BULLISH: return "Trend_Up";
+            case SCENARIO_TRENDING_BEARISH: return "Trend_Down";
+            case SCENARIO_CHOPPY: return "Choppy";
+            case SCENARIO_ASIAN_SESSION: return "Asian";
+            case SCENARIO_LONDON_OPENING: return "London";
+            case SCENARIO_OVERLAP_EU_US: return "EU_US";
+            case SCENARIO_NY_AFTERNOON: return "NY_PM";
+            case SCENARIO_OVERNIGHT_THIN: return "Overnight";
+            case SCENARIO_POST_NEWS: return "Post_News";
+            case SCENARIO_FRIDAY_AFTERNOON: return "Friday_PM";
+            case SCENARIO_MONTHLY_ROLLOVER: return "Month_End";
+            default: return "Unknown";
+        }
     }
 
     // Determinar si el escenario actual es débil
