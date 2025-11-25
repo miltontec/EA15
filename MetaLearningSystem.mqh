@@ -361,6 +361,10 @@ struct ScenarioPerformance {
     int recentWins;
     double recentWinRate;
 
+    // ENDURECIMIENTO GRADUAL - Pérdidas consecutivas
+    int consecutiveLosses;      // Pérdidas consecutivas actuales
+    int maxConsecutiveLosses;   // Máximo histórico de pérdidas consecutivas
+
     // Clasificación de fortaleza
     ENUM_SCENARIO_STRENGTH strength;
 
@@ -383,6 +387,8 @@ struct ScenarioPerformance {
         recentTrades = 0;
         recentWins = 0;
         recentWinRate = 0.0;
+        consecutiveLosses = 0;
+        maxConsecutiveLosses = 0;
         strength = STRENGTH_NEUTRAL;
         lastReset = 0;
         monthsSinceLastReset = 0;
@@ -399,11 +405,20 @@ struct ScenarioPerformance {
             recentWins++;
             totalProfit += profit;
             if(wins > 0) avgWin = totalProfit / wins;
+
+            // RESETEAR pérdidas consecutivas al ganar
+            consecutiveLosses = 0;
         }
         else {
             totalLoss += MathAbs(profit);
             int losses = trades - wins;
             if(losses > 0) avgLoss = totalLoss / losses;
+
+            // INCREMENTAR pérdidas consecutivas
+            consecutiveLosses++;
+            if(consecutiveLosses > maxConsecutiveLosses) {
+                maxConsecutiveLosses = consecutiveLosses;
+            }
         }
 
         // Calcular métricas
@@ -6844,57 +6859,57 @@ double GetConsensusSuccessRate()
         }
     }
 
-    // Determinar si el escenario actual es débil
+    // Determinar si el escenario actual es débil (basado en PÉRDIDAS CONSECUTIVAS)
     bool IsWeakScenario(const MarketScenarioSnapshot &snapshot)
     {
-        int weakCount = 0;
-        int strongCount = 0;
-
+        // Solo activar modo defensivo si hay 3+ pérdidas consecutivas
         for(int i = 0; i < snapshot.scenarioCount; i++) {
             int scenarioIdx = snapshot.scenarios[i];
             if(scenarioIdx >= SCENARIO_COUNT) continue;
 
-            // Requiere mínimo 10 trades para clasificación
-            if(m_scenarioStats[scenarioIdx].trades < 10) continue;
+            // Solo considerar escenarios con al menos 3 trades
+            if(m_scenarioStats[scenarioIdx].trades < 3) continue;
 
-            if(m_scenarioStats[scenarioIdx].strength <= STRENGTH_WEAK) {
-                weakCount++;
-            }
-            else if(m_scenarioStats[scenarioIdx].strength >= STRENGTH_STRONG) {
-                strongCount++;
+            // Activar modo defensivo si hay 3 o más pérdidas consecutivas
+            if(m_scenarioStats[scenarioIdx].consecutiveLosses >= 3) {
+                return true;
             }
         }
 
-        // Escenario débil si ANY escenario activo es débil y NO hay fuertes dominantes
-        return (weakCount > 0 && strongCount <= weakCount);
+        return false;  // Sin pérdidas consecutivas significativas = modo normal
     }
 
-    // Obtener multiplicador de timidez (0.3-1.0)
-    double GetTimidityMultiplier(const MarketScenarioSnapshot &snapshot)
+    // Helper: Obtener máximo de pérdidas consecutivas en escenarios activos
+    int GetMaxConsecutiveLosses(const MarketScenarioSnapshot &snapshot)
     {
-        if(!IsWeakScenario(snapshot)) return 1.0;  // Normal operation
-
-        double worstWinRate = 1.0;
-        double worstExpectancy = 0.0;
+        int maxConsecutiveLosses = 0;
 
         for(int i = 0; i < snapshot.scenarioCount; i++) {
             int scenarioIdx = snapshot.scenarios[i];
             if(scenarioIdx >= SCENARIO_COUNT) continue;
+            if(m_scenarioStats[scenarioIdx].trades < 3) continue;
 
-            if(m_scenarioStats[scenarioIdx].trades < 10) continue;
-
-            if(m_scenarioStats[scenarioIdx].strength <= STRENGTH_WEAK) {
-                worstWinRate = MathMin(worstWinRate, m_scenarioStats[scenarioIdx].winRate);
-                worstExpectancy = MathMin(worstExpectancy, m_scenarioStats[scenarioIdx].expectancy);
+            if(m_scenarioStats[scenarioIdx].consecutiveLosses > maxConsecutiveLosses) {
+                maxConsecutiveLosses = m_scenarioStats[scenarioIdx].consecutiveLosses;
             }
         }
 
-        // Cálculo de timidez basado en severidad de debilidad
-        if(worstWinRate < 0.30) return 0.3;  // Muy tímido: solo trades ULTRA selectivos
-        if(worstWinRate < 0.40) return 0.5;  // Tímido: umbral de consenso +50%
-        if(worstWinRate < 0.45) return 0.7;  // Cauteloso: umbral +20%
+        return maxConsecutiveLosses;
+    }
 
-        return 1.0;
+    // Obtener multiplicador de timidez (0.5-1.0) basado en PÉRDIDAS CONSECUTIVAS
+    double GetTimidityMultiplier(const MarketScenarioSnapshot &snapshot)
+    {
+        int maxConsecutiveLosses = GetMaxConsecutiveLosses(snapshot);
+
+        // ENDURECIMIENTO GRADUAL basado en pérdidas consecutivas
+        if(maxConsecutiveLosses >= 11) return 0.50;  // 11+ pérdidas: MUY estricto (100% → 200%)
+        if(maxConsecutiveLosses >= 9)  return 0.60;  // 9-10 pérdidas: Muy estricto (100% → 167%)
+        if(maxConsecutiveLosses >= 7)  return 0.70;  // 7-8 pérdidas: Estricto (100% → 143%)
+        if(maxConsecutiveLosses >= 5)  return 0.80;  // 5-6 pérdidas: Cauteloso (100% → 125%)
+        if(maxConsecutiveLosses >= 3)  return 0.90;  // 3-4 pérdidas: Ligeramente cauteloso (100% → 111%)
+
+        return 1.0;  // 0-2 pérdidas: NORMAL, sin restricción
     }
 
     // Actualizar performance de escenario después de trade
