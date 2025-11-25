@@ -1437,12 +1437,12 @@ public:
         Print("  🧠 SISTEMA DE VOTACIÓN CONTEXTUAL v3.0 - INICIALIZANDO");
         Print("═══════════════════════════════════════════════════════════");
 
-        // Inicializar indicadores con pesos balanceados
-        m_indicators[0].Initialize("SR_Levels", 0.20);
-        m_indicators[1].Initialize("ML_Neural", 0.20);
-        m_indicators[2].Initialize("Momentum", 0.20);
-        m_indicators[3].Initialize("RSI_Divergence", 0.20);
-        m_indicators[4].Initialize("Volume_Profile", 0.20);
+        // Inicializar indicadores con pesos balanceados y NOMBRES REALES
+        m_indicators[0].Initialize("CSupportResistance", 0.20);
+        m_indicators[1].Initialize("CAccumulationZones", 0.20);
+        m_indicators[2].Initialize("CPatternMemory", 0.20);
+        m_indicators[3].Initialize("CBreakoutDetector", 0.20);
+        m_indicators[4].Initialize("CInstitutionalPlanFinder", 0.20);
 
         // Inicializar matriz 4D completa
         for(int ind = 0; ind < 5; ind++) {
@@ -5491,12 +5491,12 @@ public:
         m_lastTradeWasWin = false;
         m_recentPerformanceEMA = 0.5;
         
-        // Inicializar nombres de agentes (compatibilidad con TradingStrategy)
-        m_agentNames[0] = "S/R";
-        m_agentNames[1] = "ML";
-        m_agentNames[2] = "Momentum";
-        m_agentNames[3] = "RSI";
-        m_agentNames[4] = "Volume";
+        // Inicializar nombres REALES de agentes (deben coincidir con g_authorizedIndicators)
+        m_agentNames[0] = "CSupportResistance";
+        m_agentNames[1] = "CAccumulationZones";
+        m_agentNames[2] = "CPatternMemory";
+        m_agentNames[3] = "CBreakoutDetector";
+        m_agentNames[4] = "CInstitutionalPlanFinder";
         
         // Umbrales corregidos (más estrictos)
         m_minSenior = 0.55;

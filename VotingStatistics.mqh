@@ -1124,17 +1124,17 @@ public:
             }
         }
         
-        // Inicializar especializaciones con los nombres correctos de los Includes
-        // Reordenado para alinear con ENUM_INDICATOR_TYPE actualizado
+        // Inicializar especializaciones con los nombres REALES de las clases
+        // Estos nombres coinciden con los indicadores autorizados en TradingStrategy.mq5
         string indicatorNames[] = {
-            "Support/Resistance",   // ID 0 -> IND_SUPPORT_RESIST
-            "Accumulation Zones",   // ID 1 -> IND_ACCUMULATION
-            "Pattern Memory",       // ID 2 -> IND_PATTERN
-            "Breakout Detector",    // ID 3 -> IND_BREAKOUT
-            "Institutional Plan",   // ID 4 -> IND_INSTITUTIONAL
-            "Meta Learning",        // ID 5 -> IND_META_LEARNING
-            "Episodic Memory",      // ID 6 -> IND_EPISODIC
-            "Reserved/Legacy"       // ID 7 -> no usado directamente
+            "CSupportResistance",       // ID 0 -> IND_SUPPORT_RESIST
+            "CAccumulationZones",       // ID 1 -> IND_ACCUMULATION
+            "CPatternMemory",           // ID 2 -> IND_PATTERN
+            "CBreakoutDetector",        // ID 3 -> IND_BREAKOUT
+            "CInstitutionalPlanFinder", // ID 4 -> IND_INSTITUTIONAL
+            "MetaLearningSystem",       // ID 5 -> IND_META_LEARNING
+            "EpisodicMemorySystem",     // ID 6 -> IND_EPISODIC
+            "Reserved/Legacy"           // ID 7 -> no usado directamente
         };
         
         for(int i = 0; i < 8; i++) {
